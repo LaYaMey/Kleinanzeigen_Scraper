@@ -1,0 +1,6 @@
+{
+  "protocol":"http",
+  "scrape_next_pages": "True",
+  "putput_path" : "laptop_listings_dataset.json"
+}
+
