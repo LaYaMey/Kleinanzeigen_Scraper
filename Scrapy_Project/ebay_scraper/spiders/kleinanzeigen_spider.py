@@ -3,7 +3,6 @@ import re
 import os
 import scrapy
 
-
 #from Scrapy_Project\ebay_scraper\ebay_scraper\spiders\utilities import Utilities
 #from utilities import Utilities
 from ebay_scraper.spiders.utilities import Utilities
@@ -77,8 +76,14 @@ class KleinanzeigenSpider(scrapy.Spider):
                 existing_item = next((item for item in existing_data if item["ID"] == doc_id), None)
                 
                 if existing_item:
-                    old_price = int(existing_item.get("Preis", 0))
+                    raw_old_price = existing_item.get("Preis", 0)
                     
+                    try:
+                        # Handle cases where price might be "", "VB", or string "150"
+                        old_price = int(raw_old_price)
+                    except (ValueError, TypeError):
+                        # If data is corrupt/empty, assume 0 so we trigger an update if the new price is > 0
+                        old_price = 0
                     if old_price != current_price_int:
                         self.logger.info(f"Ad {doc_id}: Price changed ({old_price} -> {current_price_int}). Updating JSON.")
                         # Update JSON immediately
@@ -125,8 +130,9 @@ class KleinanzeigenSpider(scrapy.Spider):
             article_price = response.xpath("//h2[@class='boxedarticle--price']//text()").get()
 
         if article_price:
-            # FIX: r"..." für Raw String, um die SyntaxWarning zu beheben
             article_price = re.sub(r"[€VB\s]", "", article_price).strip().replace(".", "")
+            if article_price == "":
+                article_price = "0"
         else:
             article_price = "0"
 
