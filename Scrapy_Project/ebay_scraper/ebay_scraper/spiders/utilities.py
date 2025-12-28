@@ -8,13 +8,8 @@ import time
 
 class Utilities:
 
-    def load_urls(self, filename = "start_urls.json"):
-        with open('start_urls.json') as file:
-            links = json.load(file)
-            return links['urls']
-
-    def load_config_file(self, filename = "config_file.json"):
-        with open('config_file.json') as file:
+    def load_config_file(self, filename="config_file.json"):
+        with open(filename, 'r', encoding='utf-8') as file:
             config = json.load(file)
             return config
 

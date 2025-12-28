@@ -1,0 +1,8 @@
+{
+    "task_name": "Mums 17 Inch Laptops",
+    "output_filename": "data_mums_laptops.json",
+    "scrape_next_pages": true,
+    "start_urls": [
+        "https://www.kleinanzeigen.de/s-preis:100:/laptop-17-zoll/k0"
+    ]
+}
