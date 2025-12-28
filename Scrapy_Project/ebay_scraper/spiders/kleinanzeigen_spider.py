@@ -42,45 +42,59 @@ class KleinanzeigenSpider(scrapy.Spider):
         ad_articles = response.xpath("//article[contains(@class, 'aditem')]")
         self.logger.info(f"Page Analysis: Found {len(ad_articles)} ad containers on {response.url}")
 
-        existing_data = self.utilities.open_json(self.config.get("output_filename", "fallback_data.json"))
+        output_file = self.config.get("output_filename", "fallback_data.json")
+        existing_data = self.utilities.open_json(output_file)
 
         for index, ad in enumerate(ad_articles):
             # URL holen
             url_relative = ad.xpath(".//a[contains(@class, 'ellipsis')]/@href").get()
-            
             if not url_relative:
-                # Manchmal ist der Link direkt auf dem Artikel oder anders verschachtelt
-                # Fallback Versuche
                 url_relative = ad.xpath(".//a[contains(@href, '/s-anzeige/')]/@href").get()
                 if not url_relative:
                     self.logger.warning(f"Ad {index}: No URL found. Skipping.")
                     continue
-
             # TopAd Check
             is_top_ad = ad.xpath("./ancestor::li[contains(@class, 'is-topad')]")
-            if is_top_ad:
-                self.logger.info(f"Ad {index}: Skipped (TopAd/Werbung)")
-                continue
+            if is_top_ad: continue
 
-            # ID Check - NUR AUS URL (für langes Format)
-            # URL Format ist: /s-anzeige/titel-bla-bla/123456789-123-456
-            # Split by '/' first, take the last part, then split by '?' to remove tracking codes
+            # ID extraction
             doc_id = url_relative.split("/")[-1].split("?")[0]
 
-            if existing_data:
-                if any(entry.get("ID") == doc_id for entry in existing_data):
-                    self.logger.info(f"Ad {index}: Skipped (Duplicate ID {doc_id})")
-                    if scrape_next_page:
-                        scrape_next_page = False
-                    continue
+            # --- OPTIMIZATION START ---
             
+            # 1. Extract Price from Search Result (List Item)
+            price_text = ad.xpath(".//p[contains(@class, 'price-shipping--price')]/text()").get()
+            current_price_int = 0
+            
+            if price_text:
+                clean_price = re.sub(r"[€VB\s]", "", price_text).strip().replace(".", "")
+                if clean_price:
+                    current_price_int = int(clean_price)
+
+            # 2. Check against Existing Data
+            if existing_data:
+                # Find the item in our loaded list
+                existing_item = next((item for item in existing_data if item["ID"] == doc_id), None)
+                
+                if existing_item:
+                    old_price = int(existing_item.get("Preis", 0))
+                    
+                    if old_price != current_price_int:
+                        self.logger.info(f"Ad {doc_id}: Price changed ({old_price} -> {current_price_int}). Updating JSON.")
+                        # Update JSON immediately
+                        self.utilities.update_listing_price(doc_id, current_price_int, output_file)
+                    else:
+                        self.logger.info(f"Ad {doc_id}: Already exists, price unchanged. Skipping.")
+                        if scrape_next_page:
+                            scrape_next_page = False
+                    continue 
             # Request erstellen
             article_page = response.urljoin(url_relative)
             yield scrapy.Request(
                 url=article_page, 
                 callback=self.parse_article_page, 
                 dont_filter=True,
-                meta={'doc_id': doc_id} # LANGE ID weiterreichen
+                meta={'doc_id': doc_id} 
             )
 
         # Pagination

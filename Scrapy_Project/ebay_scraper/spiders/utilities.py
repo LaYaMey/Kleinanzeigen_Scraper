@@ -101,7 +101,34 @@ class Utilities:
         else:
             print(f'Listing with ID {new_listing_id} already exists in {existing_filename}. Skipped when writing.')
 
+    def update_listing_price(self, doc_id, new_price, filename):
+        """
+        Updates the price of an existing listing in the JSON file.
+        """
+        if not os.path.exists(filename):
+            return
 
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            updated = False
+            for entry in data:
+                if entry.get("ID") == doc_id:
+                    old_price = entry.get("Preis")
+                    # Only save if it's actually different
+                    if old_price != new_price:
+                        entry["Preis"] = new_price
+                        updated = True
+                        print(f"📉 Price update for {doc_id}: {old_price} -> {new_price}")
+                    break
+            
+            if updated:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=4)
+                    
+        except Exception as e:
+            print(f"Error updating price: {e}")
 
     def log_scraper_run(self, logfile_path):
         # Check if the logfile exists, and create it if missing
