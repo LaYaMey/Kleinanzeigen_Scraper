@@ -35,7 +35,7 @@ class KleinanzeigenSpider(scrapy.Spider):
             self.config = {}
 
 
-    def parse(self, response):
+    def parse(self, response, **kwargs):
         scrape_next_page = self.config.get("scrape_next_pages", False)
 
         # 1. Container finden
