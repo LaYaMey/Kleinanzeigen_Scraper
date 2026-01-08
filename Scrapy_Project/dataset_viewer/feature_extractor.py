@@ -4,18 +4,15 @@ import re
 class SpecExtractor:
     """
     Heuristics to extract PC specs from unstructured text.
-    Focuses on CPU Generation (e.g. Intel 12th Gen, Ryzen 5000 Series).
     """
 
     @staticmethod
     def _find_ram(text):
         if not isinstance(text, str): return None
-        # Pattern: Number (4-128) followed by GB and optional keywords
         pattern = r'\b(\d{1,3})\s*GB(?:\s*(?:RAM|DDR|Arbeitsspeicher)|$)'
         matches = re.findall(pattern, text, re.IGNORECASE)
         for m in matches:
             val = int(m)
-            # Heuristic: RAM is usually between 4 and 128 GB.
             if 4 <= val <= 128:
                 return val
         return None
@@ -44,11 +41,6 @@ class SpecExtractor:
         if not isinstance(text, str): return None
         
         # --- 1. INTEL GENERATION ---
-        # Matches: i5-12400, i7 8700k, i5-1135G7, i7-6700HQ
-        # Regex explanation:
-        # i[3579]      -> Looks for i3, i5, i7, i9
-        # [\s-]*       -> Optional separator
-        # (\d{3,5})    -> Captures the model number (3 to 5 digits)
         intel_pattern = r'i[3579][\s-]*(\d{3,5})'
         match_intel = re.search(intel_pattern, text, re.IGNORECASE)
         
@@ -57,66 +49,95 @@ class SpecExtractor:
             length = len(model_str)
             gen = None
 
-            # Logic to decipher Generation from Model Number
             if length == 3:
-                # e.g., i7-920 -> 1st Gen
                 gen = "01"
             elif length >= 4:
-                # Check the first two digits to see if it's 10, 11, 12, 13, 14...
-                # e.g., 12700 (Gen 12), 1235U (Gen 12), 10700 (Gen 10)
                 prefix_2 = int(model_str[:2])
                 if 10 <= prefix_2 <= 19:
                     gen = str(prefix_2)
                 else:
-                    # Otherwise, it's a single digit generation (2nd to 9th)
-                    # e.g., 8550U (Gen 8), 4790k (Gen 4), 6700 (Gen 6)
                     gen = "0" + model_str[0]
             
             if gen:
                 return f"Intel Gen {gen}"
 
         # --- 2. AMD RYZEN SERIES ---
-        # Matches: Ryzen 5 3600, Ryzen 7 5800H, Ryzen 7 7840U, Ryzen 5 5600
-        # Regex explanation:
-        # Ryzen          -> Keyword
-        # (?:[\s-]*[3579])? -> Optional "5", "7" etc (non-capturing)
-        # [\s-]+         -> Separator
-        # (\d{4})        -> Captures the 4-digit model number
         amd_pattern = r'Ryzen(?:[\s-]*[3579])?[\s-]+(\d{4})'
         match_amd = re.search(amd_pattern, text, re.IGNORECASE)
         
         if match_amd:
             model_str = match_amd.group(1)
-            # The first digit indicates the series (e.g., 5800 -> 5000 series)
             series = model_str[0]
             return f"AMD Ryzen {series}000 Series"
 
         return None
 
+    @staticmethod
+    def _find_gpu(text):
+        """
+        Detects specific NVIDIA RTX and GTX models.
+        Returns strings like 'NVIDIA RTX 4060', 'NVIDIA RTX 3070 Ti', etc.
+        """
+        if not isinstance(text, str): return None
+        
+        t = text.upper() # Normalize to uppercase for easier matching
+        
+        # --- 1. NVIDIA RTX (20xx, 30xx, 40xx, 50xx) ---
+        # Regex Explanation:
+        # RTX          -> Literal match
+        # \s*-?        -> Optional space or hyphen
+        # (\d{4})      -> Group 1: Captures the 4-digit model (e.g. 4060)
+        # (?: ... )?   -> Non-capturing optional group for the suffix
+        # \s*          -> Optional space
+        # (TI|SUPER)   -> Group 2: Captures 'TI' or 'SUPER'
+        rtx_pattern = r'RTX\s*-?(\d{4})(?:\s*(TI|SUPER))?'
+        rtx_match = re.search(rtx_pattern, t)
+        
+        if rtx_match:
+            model = rtx_match.group(1)
+            suffix = rtx_match.group(2)
+            
+            full_name = f"NVIDIA RTX {model}"
+            if suffix:
+                full_name += f" {suffix}"
+            return full_name
+
+        # --- 2. NVIDIA GTX (9xx, 10xx, 16xx) ---
+        # Matches: GTX 1060, GTX 1660 Super, GTX 970
+        gtx_pattern = r'GTX\s*-?(\d{3,4})(?:\s*(TI|SUPER))?'
+        gtx_match = re.search(gtx_pattern, t)
+        
+        if gtx_match:
+            model = gtx_match.group(1)
+            suffix = gtx_match.group(2)
+            
+            full_name = f"NVIDIA GTX {model}"
+            if suffix:
+                full_name += f" {suffix}"
+            return full_name
+
+        return None
+
 def enrich_dataframe(df):
-    """
-    Main function to be called from the Viewer.
-    """
     
     def extract_row(row):
         title = str(row.get('Artikelstitel', ''))
         desc = str(row.get('Artikelsbeschreibung', ''))
         
-        # 1. RAM
-        ram = SpecExtractor._find_ram(title)
-        if not ram: ram = SpecExtractor._find_ram(desc)
-        
-        # 2. SSD
-        ssd = SpecExtractor._find_ssd(title)
-        if not ssd: ssd = SpecExtractor._find_ssd(desc)
+        # Helper to search title first, then desc
+        def find_spec(func):
+            res = func(title)
+            if not res: res = func(desc)
+            return res
 
-        # 3. CPU GENERATION (Updated)
-        cpu = SpecExtractor._find_cpu_gen(title)
-        if not cpu: cpu = SpecExtractor._find_cpu_gen(desc)
+        ram = find_spec(SpecExtractor._find_ram)
+        ssd = find_spec(SpecExtractor._find_ssd)
+        cpu = find_spec(SpecExtractor._find_cpu_gen)
+        gpu = find_spec(SpecExtractor._find_gpu)
         
-        return pd.Series([ram, ssd, cpu])
+        return pd.Series([ram, ssd, cpu, gpu])
 
     # Add columns
-    df[['Ext_RAM', 'Ext_SSD', 'Ext_CPU']] = df.apply(extract_row, axis=1)
+    df[['Ext_RAM', 'Ext_SSD', 'Ext_CPU', 'Ext_GPU']] = df.apply(extract_row, axis=1)
     
     return df
