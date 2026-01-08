@@ -18,7 +18,7 @@ cd "$(dirname "$0")/Scrapy_Project" || { echo "Error: Project folder not found!"
 JOBS=(
     "job_mums_17inch.json"
     "job_gaming_laptop.json"
-    # "job_garden_tools.json"
+    "job_gaming_PC_4060.json"
 )
 
 # --- 4. EXECUTION LOOP ---

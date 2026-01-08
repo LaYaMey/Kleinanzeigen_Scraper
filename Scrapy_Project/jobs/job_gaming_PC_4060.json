@@ -1,0 +1,8 @@
+{
+    "task_name": "Gaming PC 4060",
+    "output_filename": "data_gaming_PC_4060.json",
+    "scrape_next_pages": true,
+    "start_urls": [
+        "https://www.kleinanzeigen.de/s-sortierung:preis/pc-4060/k0"
+    ]
+}
